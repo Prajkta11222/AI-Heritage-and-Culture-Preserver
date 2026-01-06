@@ -1,3 +1,9 @@
+import HeritageCreator from '@/components/heritage-creator';
+
 export default function Home() {
-  return <></>;
+  return (
+    <div className="bg-background min-h-screen">
+      <HeritageCreator />
+    </div>
+  );
 }
