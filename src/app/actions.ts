@@ -5,8 +5,6 @@ import OpenAI from 'openai';
 import { getFirestore, addDoc, collection } from 'firebase/firestore';
 import { app } from '@/lib/firebase';
 
-const db = getFirestore(app);
-
 // Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -29,6 +27,7 @@ export async function processHeritageImage(
   }
 
   try {
+    const db = getFirestore(app);
     // 1. Generate story from image using OpenAI Vision
     const visionResponse = await openai.chat.completions.create({
       model: 'gpt-4-vision-preview',
