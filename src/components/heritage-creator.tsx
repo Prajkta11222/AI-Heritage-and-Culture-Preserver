@@ -13,7 +13,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { initializeAuth } from '@/lib/firebase';
 import type { FormState } from '@/lib/types';
 import { Landmark, AlertCircle, UploadCloud, FileImage } from 'lucide-react';
 import Image from 'next/image';
@@ -55,20 +54,15 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
 }
 
 export default function HeritageCreator() {
-  const [state, formAction] = useActionState(
+  const [state, formAction, isPending] = useActionState(
     processHeritageImage,
     initialState
   );
   const { toast } = useToast();
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [imageDataUri, setImageDataUri] = useState<string>('');
   const formRef = useRef<HTMLFormElement>(null);
-  const { pending } = useFormStatus();
-
-  useEffect(() => {
-    initializeAuth();
-  }, []);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (state.status === 'error') {
@@ -77,6 +71,14 @@ export default function HeritageCreator() {
         title: 'An error occurred',
         description: state.message,
       });
+    }
+    if(state.status === 'success'){
+       // The form was successful, we can clear the preview
+       setImagePreview(null);
+       setFileName(null);
+       if(fileInputRef.current) {
+        fileInputRef.current.value = '';
+       }
     }
   }, [state, toast]);
 
@@ -87,18 +89,16 @@ export default function HeritageCreator() {
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result as string);
-        setImageDataUri(reader.result as string);
       };
       reader.readAsDataURL(file);
+    } else {
+      setImagePreview(null);
+      setFileName(null);
     }
   };
 
   const resetForm = () => {
-    formRef.current?.reset();
-    setImagePreview(null);
-    setFileName(null);
-    setImageDataUri('');
-    // A little trick to reset the form state
+    // A little trick to reset the form state by calling the action with no form data
     formAction(new FormData());
   };
 
@@ -169,6 +169,7 @@ export default function HeritageCreator() {
                       controls
                       className="w-full"
                       src={state.data.audioUrl}
+                      preload="auto"
                     >
                       Your browser does not support the audio element.
                     </audio>
@@ -208,11 +209,6 @@ export default function HeritageCreator() {
             </CardHeader>
             <form ref={formRef} action={formAction} className="space-y-6">
               <CardContent>
-                <input
-                  type="hidden"
-                  name="imageDataUri"
-                  value={imageDataUri}
-                />
                 <div className="space-y-2">
                   <Label htmlFor="image-upload" className="sr-only">
                     Upload Image
@@ -225,6 +221,7 @@ export default function HeritageCreator() {
                       accept="image/*"
                       onChange={handleFileChange}
                       required
+                      ref={fileInputRef}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     />
                     <div className="text-center">
@@ -242,8 +239,8 @@ export default function HeritageCreator() {
                   </div>
                 </div>
 
-                {imagePreview && (
-                  <div className="space-y-2 animate-in fade-in duration-300">
+                {imagePreview && !isPending && (
+                  <div className="space-y-2 animate-in fade-in duration-300 pt-4">
                     <Label>Image Preview</Label>
                     <div className="flex items-center gap-3 p-3 bg-muted rounded-md">
                       <FileImage className="h-5 w-5 text-primary" />
@@ -261,7 +258,7 @@ export default function HeritageCreator() {
                   </div>
                 )}
 
-                {pending && (
+                {isPending && (
                   <div className="space-y-4 pt-4 text-center">
                     <div className="flex justify-center">
                       <div className="h-12 w-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
