@@ -28,46 +28,13 @@ import { auth, storage } from '@/lib/firebase';
 import { signInAnonymously } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { v4 as uuidv4 } from 'uuid';
+import imageCompression from 'browser-image-compression';
 
 const initialState: FormState = {
   status: 'idle',
   message: '',
   data: null,
 };
-
-function SubmitButton({
-  disabled,
-  onClick,
-}: {
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  const [isPending, startTransition] = useTransition();
-
-  const handleClick = () => {
-    startTransition(() => {
-      onClick();
-    });
-  };
-
-  return (
-    <Button
-      onClick={handleClick}
-      disabled={disabled || isPending}
-      className="w-full"
-      size="lg"
-    >
-      {isPending ? (
-        <>
-          <span className="animate-spin mr-2">◌</span>
-          Processing...
-        </>
-      ) : (
-        'Generate Story & Narration'
-      )}
-    </Button>
-  );
-}
 
 export default function HeritageCreator() {
   const [state, formAction] = useActionState(
@@ -136,6 +103,16 @@ export default function HeritageCreator() {
     setIsUploading(true);
 
     try {
+
+      // Image compression options
+      const options = {
+        maxSizeMB: 1,
+        maxWidthOrHeight: 1920,
+        useWebWorker: true,
+      }
+      
+      const compressedFile = await imageCompression(selectedFile, options);
+
       // 1. Ensure user is signed in anonymously on the client
       if (!auth.currentUser) {
         await signInAnonymously(auth);
@@ -147,10 +124,10 @@ export default function HeritageCreator() {
 
       // 2. Upload original image to Firebase Storage from the client
       const imageId = uuidv4();
-      const imagePath = `images/${user.uid}/${imageId}-${selectedFile.name}`;
+      const imagePath = `images/${user.uid}/${imageId}-${compressedFile.name}`;
       const imageRef = ref(storage, imagePath);
       
-      const uploadTask = await uploadBytes(imageRef, selectedFile);
+      const uploadTask = await uploadBytes(imageRef, compressedFile);
       const imageUrl = await getDownloadURL(uploadTask.ref);
       
       setIsUploading(false);
@@ -354,7 +331,7 @@ export default function HeritageCreator() {
                     </div>
                     <p className="text-muted-foreground font-medium">
                       {isUploading
-                        ? 'Uploading your image securely...'
+                        ? 'Compressing and uploading...'
                         : 'Analyzing your heritage... this may take a moment.'}
                     </p>
                     <div className="text-sm text-muted-foreground/80">
