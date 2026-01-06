@@ -17,8 +17,13 @@ import { initializeAuth } from '@/lib/firebase';
 import type { FormState } from '@/lib/types';
 import { Landmark, AlertCircle, UploadCloud, FileImage } from 'lucide-react';
 import Image from 'next/image';
-import { useEffect, useRef, useState } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { useFormStatus } from 'react-dom';
 import { AppLogo } from './icons';
 
 const initialState: FormState = {
@@ -27,10 +32,16 @@ const initialState: FormState = {
   data: null,
 };
 
-function SubmitButton() {
+function SubmitButton({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
+
   return (
-    <Button type="submit" disabled={pending} className="w-full" size="lg">
+    <Button
+      type="submit"
+      disabled={disabled || pending}
+      className="w-full"
+      size="lg"
+    >
       {pending ? (
         <>
           <span className="animate-spin mr-2">◌</span>
@@ -44,12 +55,16 @@ function SubmitButton() {
 }
 
 export default function HeritageCreator() {
-  const [state, formAction] = useFormState(processHeritageImage, initialState);
+  const [state, formAction] = useActionState(
+    processHeritageImage,
+    initialState
+  );
   const { toast } = useToast();
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [imageDataUri, setImageDataUri] = useState<string>('');
   const formRef = useRef<HTMLFormElement>(null);
+  const { pending } = useFormStatus();
 
   useEffect(() => {
     initializeAuth();
@@ -86,8 +101,6 @@ export default function HeritageCreator() {
     // A little trick to reset the form state
     formAction(new FormData());
   };
-
-  const { pending } = useFormStatus();
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -152,20 +165,30 @@ export default function HeritageCreator() {
                     <p className="text-base leading-relaxed whitespace-pre-wrap font-body">
                       {state.data.storyText}
                     </p>
-                    <audio controls className="w-full" src={state.data.audioUrl}>
+                    <audio
+                      controls
+                      className="w-full"
+                      src={state.data.audioUrl}
+                    >
                       Your browser does not support the audio element.
                     </audio>
                   </CardContent>
                   <CardFooter className="flex-col items-start gap-4">
-                     <div className="text-xs text-muted-foreground bg-accent p-3 rounded-md w-full">
-                        <div className="flex items-start gap-2">
-                            <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                            <div>
-                                <strong>Disclaimer:</strong> AI-assisted output for cultural awareness only. Information may not be fully accurate.
-                            </div>
+                    <div className="text-xs text-muted-foreground bg-accent p-3 rounded-md w-full">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <strong>Disclaimer:</strong> AI-assisted output for
+                          cultural awareness only. Information may not be fully
+                          accurate.
                         </div>
-                     </div>
-                    <Button onClick={resetForm} variant="outline" className="w-full">
+                      </div>
+                    </div>
+                    <Button
+                      onClick={resetForm}
+                      variant="outline"
+                      className="w-full"
+                    >
                       Analyze Another Image
                     </Button>
                   </CardFooter>
@@ -183,8 +206,8 @@ export default function HeritageCreator() {
                 Select an image of a monument or an old family photo to begin.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <form ref={formRef} action={formAction} className="space-y-6">
+            <form ref={formRef} action={formAction} className="space-y-6">
+              <CardContent>
                 <input
                   type="hidden"
                   name="imageDataUri"
@@ -223,8 +246,10 @@ export default function HeritageCreator() {
                   <div className="space-y-2 animate-in fade-in duration-300">
                     <Label>Image Preview</Label>
                     <div className="flex items-center gap-3 p-3 bg-muted rounded-md">
-                        <FileImage className="h-5 w-5 text-primary"/>
-                        <span className="text-sm font-medium truncate">{fileName}</span>
+                      <FileImage className="h-5 w-5 text-primary" />
+                      <span className="text-sm font-medium truncate">
+                        {fileName}
+                      </span>
                     </div>
                     <Image
                       src={imagePreview}
@@ -235,38 +260,25 @@ export default function HeritageCreator() {
                     />
                   </div>
                 )}
-                
-                {useFormStatus().pending && (
+
+                {pending && (
                   <div className="space-y-4 pt-4 text-center">
                     <div className="flex justify-center">
-                        <div className="h-12 w-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                      <div className="h-12 w-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
                     </div>
-                    <p className="text-muted-foreground font-medium">Analyzing your heritage... this may take a moment.</p>
+                    <p className="text-muted-foreground font-medium">
+                      Analyzing your heritage... this may take a moment.
+                    </p>
                     <div className="text-sm text-muted-foreground/80">
-                        Upload → Analyze → Story → Narration
+                      Upload → Analyze → Story → Narration
                     </div>
                   </div>
                 )}
-
-              </form>
-            </CardContent>
-            <CardFooter>
-              <Button
-                onClick={() => formRef.current?.requestSubmit()}
-                disabled={!imagePreview || useFormStatus().pending}
-                className="w-full"
-                size="lg"
-              >
-                {useFormStatus().pending ? (
-                  <>
-                    <span className="animate-spin mr-2">◌</span>
-                    Processing...
-                  </>
-                ) : (
-                  'Generate Story & Narration'
-                )}
-              </Button>
-            </CardFooter>
+              </CardContent>
+              <CardFooter>
+                 <SubmitButton disabled={!imagePreview} />
+              </CardFooter>
+            </form>
           </Card>
         )}
       </main>
