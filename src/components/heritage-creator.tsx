@@ -21,14 +21,12 @@ import {
   useEffect,
   useRef,
   useState,
-  useTransition,
 } from 'react';
 import { AppLogo } from './icons';
 import { auth, storage } from '@/lib/firebase';
 import { signInAnonymously } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { v4 as uuidv4 } from 'uuid';
-import imageCompression from 'browser-image-compression';
 
 const initialState: FormState = {
   status: 'idle',
@@ -103,7 +101,7 @@ export default function HeritageCreator() {
     setIsUploading(true);
 
     try {
-
+      const imageCompression = (await import('browser-image-compression')).default;
       // Image compression options
       const options = {
         maxSizeMB: 1,
