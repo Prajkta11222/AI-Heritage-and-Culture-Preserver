@@ -21,9 +21,13 @@ import {
   useEffect,
   useRef,
   useState,
+  useTransition,
 } from 'react';
-import { useFormStatus } from 'react-dom';
 import { AppLogo } from './icons';
+import { auth, storage } from '@/lib/firebase';
+import { signInAnonymously } from 'firebase/auth';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { v4 as uuidv4 } from 'uuid';
 
 const initialState: FormState = {
   status: 'idle',
@@ -31,17 +35,29 @@ const initialState: FormState = {
   data: null,
 };
 
-function SubmitButton({ disabled }: { disabled: boolean }) {
-  const { pending } = useFormStatus();
+function SubmitButton({
+  disabled,
+  onClick,
+}: {
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const [isPending, startTransition] = useTransition();
+
+  const handleClick = () => {
+    startTransition(() => {
+      onClick();
+    });
+  };
 
   return (
     <Button
-      type="submit"
-      disabled={disabled || pending}
+      onClick={handleClick}
+      disabled={disabled || isPending}
       className="w-full"
       size="lg"
     >
-      {pending ? (
+      {isPending ? (
         <>
           <span className="animate-spin mr-2">◌</span>
           Processing...
@@ -54,15 +70,18 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
 }
 
 export default function HeritageCreator() {
-  const [state, formAction, isPending] = useActionState(
+  const [state, formAction] = useActionState(
     processHeritageImage,
     initialState
   );
   const { toast } = useToast();
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     if (state.status === 'error') {
@@ -71,14 +90,19 @@ export default function HeritageCreator() {
         title: 'An error occurred',
         description: state.message,
       });
+      setIsProcessing(false);
+      setIsUploading(false);
     }
-    if(state.status === 'success'){
-       // The form was successful, we can clear the preview
-       setImagePreview(null);
-       setFileName(null);
-       if(fileInputRef.current) {
+    if (state.status === 'success') {
+      // The form was successful, we can clear the preview
+      setImagePreview(null);
+      setFileName(null);
+      setSelectedFile(null);
+      setIsProcessing(false);
+      setIsUploading(false);
+      if (fileInputRef.current) {
         fileInputRef.current.value = '';
-       }
+      }
     }
   }, [state, toast]);
 
@@ -86,6 +110,7 @@ export default function HeritageCreator() {
     const file = e.target.files?.[0];
     if (file) {
       setFileName(file.name);
+      setSelectedFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result as string);
@@ -94,13 +119,76 @@ export default function HeritageCreator() {
     } else {
       setImagePreview(null);
       setFileName(null);
+      setSelectedFile(null);
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (!selectedFile) {
+      toast({
+        variant: 'destructive',
+        title: 'No file selected',
+        description: 'Please select an image to upload.',
+      });
+      return;
+    }
+    
+    setIsUploading(true);
+
+    try {
+      // 1. Ensure user is signed in anonymously on the client
+      if (!auth.currentUser) {
+        await signInAnonymously(auth);
+      }
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Authentication failed. Could not get user.');
+      }
+
+      // 2. Upload original image to Firebase Storage from the client
+      const imageId = uuidv4();
+      const imagePath = `images/${user.uid}/${imageId}-${selectedFile.name}`;
+      const imageRef = ref(storage, imagePath);
+      
+      const uploadTask = await uploadBytes(imageRef, selectedFile);
+      const imageUrl = await getDownloadURL(uploadTask.ref);
+      
+      setIsUploading(false);
+      setIsProcessing(true);
+
+      // 3. Create FormData and call the server action
+      const formData = new FormData();
+      formData.append('imageUrl', imageUrl);
+      formData.append('userId', user.uid);
+      formData.append('imageId', imageId);
+      
+      formAction(formData);
+
+    } catch (error) {
+      console.error('Error during upload or processing:', error);
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+      toast({
+        variant: 'destructive',
+        title: 'Upload Failed',
+        description: errorMessage,
+      });
+      setIsUploading(false);
+      setIsProcessing(false);
     }
   };
 
   const resetForm = () => {
-    // A little trick to reset the form state by calling the action with no form data
+    // A little trick to reset the form state
     formAction(new FormData());
+    setImagePreview(null);
+    setFileName(null);
+    setSelectedFile(null);
+    if(fileInputRef.current) {
+     fileInputRef.current.value = '';
+    }
   };
+  
+  const isBusy = isUploading || isProcessing;
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -207,7 +295,7 @@ export default function HeritageCreator() {
                 Select an image of a monument or an old family photo to begin.
               </CardDescription>
             </CardHeader>
-            <form ref={formRef} action={formAction} className="space-y-6">
+            <div className="space-y-6">
               <CardContent>
                 <div className="space-y-2">
                   <Label htmlFor="image-upload" className="sr-only">
@@ -223,6 +311,7 @@ export default function HeritageCreator() {
                       required
                       ref={fileInputRef}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      disabled={isBusy}
                     />
                     <div className="text-center">
                       <UploadCloud className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -239,7 +328,7 @@ export default function HeritageCreator() {
                   </div>
                 </div>
 
-                {imagePreview && !isPending && (
+                {imagePreview && !isBusy && (
                   <div className="space-y-2 animate-in fade-in duration-300 pt-4">
                     <Label>Image Preview</Label>
                     <div className="flex items-center gap-3 p-3 bg-muted rounded-md">
@@ -258,24 +347,42 @@ export default function HeritageCreator() {
                   </div>
                 )}
 
-                {isPending && (
+                {isBusy && (
                   <div className="space-y-4 pt-4 text-center">
                     <div className="flex justify-center">
                       <div className="h-12 w-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
                     </div>
                     <p className="text-muted-foreground font-medium">
-                      Analyzing your heritage... this may take a moment.
+                      {isUploading
+                        ? 'Uploading your image securely...'
+                        : 'Analyzing your heritage... this may take a moment.'}
                     </p>
                     <div className="text-sm text-muted-foreground/80">
-                      Upload → Analyze → Story → Narration
+                      {isUploading
+                        ? 'Step 1 of 2: Uploading'
+                        : 'Step 2 of 2: AI Processing'}
                     </div>
                   </div>
                 )}
               </CardContent>
               <CardFooter>
-                 <SubmitButton disabled={!imagePreview} />
+                 <Button
+                    onClick={handleGenerate}
+                    disabled={!imagePreview || isBusy}
+                    className="w-full"
+                    size="lg"
+                  >
+                  {isBusy ? (
+                    <>
+                      <span className="animate-spin mr-2">◌</span>
+                      {isUploading ? 'Uploading...' : 'Processing...'}
+                    </>
+                  ) : (
+                    'Generate Story & Narration'
+                  )}
+                </Button>
               </CardFooter>
-            </form>
+            </div>
           </Card>
         )}
       </main>
